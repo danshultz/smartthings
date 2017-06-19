@@ -12,7 +12,7 @@
  *
  */
 metadata {
-	definition (name: "Dimmer Switch", namespace: "smartthings", author: "SmartThings", ocfDeviceType: "oic.d.light") {
+	definition (name: "Dimmer Switch with Levels", namespace: "danshultz", author: "Dan Shultz", ocfDeviceType: "oic.d.light") {
 		capability "Switch Level"
 		capability "Actuator"
 		capability "Indicator"
@@ -22,6 +22,12 @@ metadata {
 		capability "Sensor"
 		capability "Health Check"
 		capability "Light"
+
+		command "lowLight"
+		command "medLight"
+		command "highLight"
+
+		attribute "currentState", "string"
 
 		fingerprint mfr:"0063", prod:"4457", deviceJoinName: "GE In-Wall Smart Dimmer"
 		fingerprint mfr:"0063", prod:"4944", deviceJoinName: "GE In-Wall Smart Dimmer"
@@ -49,6 +55,11 @@ metadata {
 
 	preferences {
 		input "ledIndicator", "enum", title: "LED Indicator", description: "Turn LED indicator... ", required: false, options:["on": "When On", "off": "When Off", "never": "Never"], defaultValue: "off"
+		section("Light Thresholds") {
+			input "lowThreshold", "number", title: "Low Threshold (typical is 1-33)", range: "1..99", defaultValue: 33
+			input "medThreshold", "number", title: "Medium Threshold (typical is 34-67)", range: "1..99", defaultValue: 67
+			input "highThreshold", "number", title: "High Threshold (typical is 68-99)", range: "1..99", defaultValue: 99
+		}
 	}
 
 	tiles(scale: 2) {
@@ -74,12 +85,25 @@ metadata {
 			state "default", label:'', action:"refresh.refresh", icon:"st.secondary.refresh"
 		}
 
+		/*
 		valueTile("level", "device.level", inactiveLabel: false, decoration: "flat", width: 2, height: 2) {
 			state "level", label:'${currentValue} %', unit:"%", backgroundColor:"#ffffff"
 		}
+		*/
+
+		// icons http://scripts.3dgo.net/smartthings/icons/
+		standardTile("lowLight", "device.currentState", inactiveLabel: false, decoration: "flat", width: 2, height: 2) {
+			state "LOW", label:'LOW', action: "lowLight", icon:"st.Home.home30", decoration: "flat"
+		}
+		standardTile("medLight", "device.currentState", inactiveLabel: false, decoration: "flat", width: 2, height: 2) {
+			state "MEDIUM", label: 'MEDIUM', action: "medLight", icon:"st.Home.home30", decoration: "flat"
+		}
+		standardTile("highLight", "device.currentState", inactiveLabel: false, decoration: "flat", width: 2, height: 2) {
+			state "HIGH", label: 'HIGH', action: "highLight", icon:"st.Home.home30", decoration: "flat"
+		}
 
 		main(["switch"])
-		details(["switch", "level", "refresh"])
+		details(["switch", "lowLight", "medLight", "highLight", "refresh"])
 
 	}
 }
@@ -93,19 +117,19 @@ def updated(){
 	// Device-Watch simply pings if no device events received for 32min(checkInterval)
 	sendEvent(name: "checkInterval", value: 2 * 15 * 60 + 2 * 60, displayed: false, data: [protocol: "zwave", hubHardwareId: device.hub.hardwareID])
   switch (ledIndicator) {
-        case "on":
-            indicatorWhenOn()
-            break
-        case "off":
-            indicatorWhenOff()
-            break
-        case "never":
-            indicatorNever()
-            break
-        default:
-            indicatorWhenOn()
-            break
-    }
+		case "on":
+			indicatorWhenOn()
+			break
+		case "off":
+			indicatorWhenOff()
+			break
+		case "never":
+			indicatorNever()
+			break
+		default:
+			indicatorWhenOn()
+			break
+	}
 }
 
 def getCommandClassVersions() {
@@ -217,6 +241,21 @@ def off() {
 	],5000)
 }
 
+def lowLight() {
+	sendEvent(name: "currentState", value: "LOW" as String)
+	setLevel(lowThreshold)
+}
+
+def medLight() {
+	sendEvent(name: "currentState", value: "MEDIUM" as String)
+	setLevel(medThreshold)
+}
+
+def highLight() {
+	sendEvent(name: "currentState", value: "HIGH" as String)
+	setLevel(highThreshold)
+}
+
 def setLevel(value) {
 	log.debug "setLevel >> value: $value"
 	def valueaux = value as Integer
@@ -237,7 +276,7 @@ def setLevel(value, duration) {
 	def dimmingDuration = duration < 128 ? duration : 128 + Math.round(duration / 60)
 	def getStatusDelay = duration < 128 ? (duration*1000)+2000 : (Math.round(duration / 60)*60*1000)+2000
 	delayBetween ([zwave.switchMultilevelV2.switchMultilevelSet(value: level, dimmingDuration: dimmingDuration).format(),
-				   zwave.switchMultilevelV1.switchMultilevelGet().format()], getStatusDelay)
+					 zwave.switchMultilevelV1.switchMultilevelGet().format()], getStatusDelay)
 }
 
 def poll() {
